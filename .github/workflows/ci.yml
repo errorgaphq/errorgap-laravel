@@ -14,8 +14,5 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-version }}
-      # Resolve errorgap/errorgap from source until it is on Packagist;
-      # delete this line once the package is published there.
-      - run: composer config repositories.errorgap-php vcs https://github.com/errorgaphq/errorgap-php
       - run: composer update --prefer-dist --no-progress
       - run: composer test
