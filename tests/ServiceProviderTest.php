@@ -26,6 +26,8 @@ final class ServiceProviderTest extends TestCase
             'environment' => 'testing',
             'async' => false,
             'timeout_seconds' => 5,
+            'apm_enabled' => false,
+            'apm_sample_rate' => 0.5,
             'filter_keys' => null,
             'capture_exceptions' => true,
             'capture_jobs' => true,
@@ -42,6 +44,8 @@ final class ServiceProviderTest extends TestCase
         $this->assertSame('flk_test', $configuration->apiKey);
         $this->assertSame('testing', $configuration->environment);
         $this->assertFalse($configuration->async);
+        $this->assertFalse($configuration->apmEnabled);
+        $this->assertSame(0.5, $configuration->apmSampleRate);
     }
 
     public function testBindsClientAsSingleton(): void

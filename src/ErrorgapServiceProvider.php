@@ -7,7 +7,12 @@ namespace Errorgap\Laravel;
 use Errorgap\Client;
 use Errorgap\Configuration;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
@@ -30,6 +35,9 @@ final class ErrorgapServiceProvider extends ServiceProvider
                 'rootDirectory' => base_path(),
                 'async' => $cfg['async'] ?? true,
                 'timeoutSeconds' => $cfg['timeout_seconds'] ?? 5,
+                'apmEnabled' => $cfg['apm_enabled'] ?? false,
+                'apmSampleRate' => $cfg['apm_sample_rate'] ?? 1.0,
+                'logger' => $app->make('log'),
             ];
             if (is_array($cfg['filter_keys'] ?? null)) {
                 $options['filterKeys'] = array_values($cfg['filter_keys']);
@@ -43,6 +51,21 @@ final class ErrorgapServiceProvider extends ServiceProvider
         });
 
         $this->app->alias(Client::class, 'errorgap');
+
+        $this->app->singleton(QuerySpanCollector::class, function (): QuerySpanCollector {
+            return new QuerySpanCollector(base_path());
+        });
+
+        $this->app->singleton(ExceptionReporter::class, function (Container $app): ExceptionReporter {
+            return new ExceptionReporter($app, $app->make(Client::class));
+        });
+
+        $this->app->singleton(JobApmTracker::class, function (Container $app): JobApmTracker {
+            return new JobApmTracker(
+                $app->make(Client::class),
+                $app->make(QuerySpanCollector::class),
+            );
+        });
     }
 
     public function boot(): void
@@ -61,6 +84,10 @@ final class ErrorgapServiceProvider extends ServiceProvider
         if (($cfg['capture_jobs'] ?? true) === true) {
             $this->bindJobFailureListener();
         }
+
+        if (($cfg['apm_enabled'] ?? false) === true) {
+            $this->bindApm();
+        }
     }
 
     private function bindExceptionReporter(): void
@@ -69,7 +96,7 @@ final class ErrorgapServiceProvider extends ServiceProvider
         // exposes `reportable()` on `App\Exceptions\Handler`; we instead bind
         // a callback to the global handler via the container so apps that
         // haven't overridden Handler still get coverage.
-        $client = $this->app->make(Client::class);
+        $reporter = $this->app->make(ExceptionReporter::class);
 
         $handler = $this->app->bound(\Illuminate\Contracts\Debug\ExceptionHandler::class)
             ? $this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class)
@@ -77,8 +104,8 @@ final class ErrorgapServiceProvider extends ServiceProvider
 
         if ($handler !== null && method_exists($handler, 'reportable')) {
             // Laravel 8+ Handler exposes reportable() — preferred path.
-            $handler->reportable(function (Throwable $exc) use ($client): void {
-                $client->notify($exc, sync: true);
+            $handler->reportable(function (Throwable $exc) use ($reporter): void {
+                $reporter->report($exc);
             });
             return;
         }
@@ -86,26 +113,51 @@ final class ErrorgapServiceProvider extends ServiceProvider
         // Fallback: wrap the existing handler so report() also notifies us.
         $this->app->extend(
             \Illuminate\Contracts\Debug\ExceptionHandler::class,
-            function (\Illuminate\Contracts\Debug\ExceptionHandler $existing) use ($client): object {
-                return new ReportingExceptionHandler($existing, $client);
+            function (\Illuminate\Contracts\Debug\ExceptionHandler $existing) use ($reporter): object {
+                return new ReportingExceptionHandler($existing, $reporter);
             },
         );
     }
 
     private function bindJobFailureListener(): void
     {
-        $client = $this->app->make(Client::class);
-        Event::listen(JobFailed::class, function (JobFailed $event) use ($client): void {
-            $client->notify(
+        Event::listen(JobFailed::class, function (JobFailed $event): void {
+            $this->app->make(ExceptionReporter::class)->report(
                 $event->exception,
-                context: [
+                extraContext: [
                     'source' => 'queue.job_failed',
                     'job' => $event->job->resolveName(),
                     'queue' => $event->job->getQueue(),
                     'connection' => $event->connectionName,
                 ],
-                sync: true,
+                includeRequest: false,
             );
+        });
+    }
+
+    private function bindApm(): void
+    {
+        $kernel = $this->app->make(HttpKernel::class);
+        if (method_exists($kernel, 'prependMiddleware')) {
+            $kernel->prependMiddleware(ApmMiddleware::class);
+        }
+
+        $collector = $this->app->make(QuerySpanCollector::class);
+        /** @var \Illuminate\Database\DatabaseManager $database */
+        $database = $this->app->make('db');
+        $database->connection()->listen(static function (QueryExecuted $query) use ($collector): void {
+            $collector->record($query->sql, (float)$query->time);
+        });
+
+
+        Event::listen(JobProcessing::class, function (JobProcessing $event): void {
+            $this->app->make(JobApmTracker::class)->start($event->job);
+        });
+        Event::listen(JobProcessed::class, function (JobProcessed $event): void {
+            $this->app->make(JobApmTracker::class)->finish($event->connectionName, $event->job, false);
+        });
+        Event::listen(JobExceptionOccurred::class, function (JobExceptionOccurred $event): void {
+            $this->app->make(JobApmTracker::class)->finish($event->connectionName, $event->job, true);
         });
     }
 }

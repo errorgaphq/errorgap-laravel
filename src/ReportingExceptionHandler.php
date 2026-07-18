@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Errorgap\Laravel;
 
-use Errorgap\Client;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Throwable;
 
@@ -17,13 +16,13 @@ final class ReportingExceptionHandler implements ExceptionHandler
 {
     public function __construct(
         private ExceptionHandler $inner,
-        private Client $client,
+        private ExceptionReporter $reporter,
     ) {
     }
 
     public function report(Throwable $e): void
     {
-        $this->client->notify($e, sync: true);
+        $this->reporter->report($e);
         $this->inner->report($e);
     }
 

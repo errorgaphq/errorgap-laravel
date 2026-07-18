@@ -1,7 +1,8 @@
 # errorgap/laravel
 
-Laravel integration for [Errorgap](https://errorgap.com). Auto-registers
-exception reporting and queue job failure listeners.
+Laravel integration for [Errorgap](https://errorgap.com), with Laravel 10–13
+support. It auto-registers exception reporting, request and query APM, and
+queue job instrumentation.
 
 ## Install
 
@@ -23,10 +24,24 @@ Add to `.env` (and `.env.example` with empty values):
 ERRORGAP_ENDPOINT=https://errorgap.example.com
 ERRORGAP_PROJECT_SLUG=your-project
 ERRORGAP_API_KEY=flk_...
+ERRORGAP_APM_ENABLED=true
+ERRORGAP_APM_SAMPLE_RATE=1
 ```
 
 `config/errorgap.php` reads them via `env()` calls. Disable individual
 capture sources with `capture_exceptions` or `capture_jobs`.
+
+## APM
+
+When `ERRORGAP_APM_ENABLED=true`, the SDK automatically records:
+
+- HTTP response time, status, method, and normalized Laravel route
+- database query spans with normalized SQL and application call sites
+- queued job duration, queue name, and success or failure outcome
+
+`ERRORGAP_APM_SAMPLE_RATE` accepts a value from `0` to `1` and applies only to
+performance transactions; errors are still reported independently. APM is
+disabled by default until explicitly enabled.
 
 ## Manual notification
 
