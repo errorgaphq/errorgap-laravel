@@ -6,6 +6,7 @@ namespace Errorgap\Laravel\Tests;
 
 use Errorgap\Client;
 use Errorgap\DeliveryResult;
+use Errorgap\TransactionContext;
 
 final class RecordingClient extends Client
 {
@@ -29,7 +30,7 @@ final class RecordingClient extends Client
             'session',
             'params',
             'sync',
-        );
+        ) + ['transaction_id' => TransactionContext::current()];
         return new DeliveryResult(status: 201);
     }
 
