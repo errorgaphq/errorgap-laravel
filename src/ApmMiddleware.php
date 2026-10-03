@@ -7,6 +7,7 @@ namespace Errorgap\Laravel;
 use Closure;
 use Errorgap\Client;
 use Errorgap\Configuration;
+use Errorgap\TransactionContext;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
 use Symfony\Component\HttpFoundation\Response;
@@ -27,6 +28,13 @@ final class ApmMiddleware
             return $next($request);
         }
 
+        // Laravel reports a route's exceptions inside $next(), so errors carry
+        // this request's transaction id and errorgap links the two.
+        return TransactionContext::run(fn (string $id): mixed => $this->measure($request, $next, $id));
+    }
+
+    private function measure(Request $request, Closure $next, string $transactionId): mixed
+    {
         $startedAt = hrtime(true);
         $statusCode = 500;
         $this->spans->start();
@@ -44,6 +52,7 @@ final class ApmMiddleware
         } finally {
             $durationMs = (hrtime(true) - $startedAt) / 1_000_000;
             $this->client->notifyTransaction([
+                'id' => $transactionId,
                 'kind' => 'web',
                 'method' => $request->getMethod(),
                 'path' => $this->routePattern($request),
