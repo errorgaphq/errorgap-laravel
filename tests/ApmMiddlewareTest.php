@@ -65,4 +65,22 @@ final class ApmMiddlewareTest extends TestCase
 
         $this->assertSame(500, $client->transactions[0]['status_code']);
     }
+
+    public function testRecordsTheBrowserTraceHeader(): void
+    {
+        $configuration = new Configuration(['projectSlug' => 'demo', 'apmEnabled' => true, 'apmSampleRate' => 1.0]);
+        $client = new RecordingClient($configuration);
+        $middleware = new ApmMiddleware($client, $configuration, new QuerySpanCollector(dirname(__DIR__)));
+
+        $traced = Request::create('/orders/42', 'GET');
+        $traced->headers->set('x-errorgap-trace', '0192F3C4-7A1B-4C2D-9E3F-0123456789AB');
+        $middleware->handle($traced, static fn (): Response => new Response('ok'));
+        $malformed = Request::create('/orders/43', 'GET');
+        $malformed->headers->set('x-errorgap-trace', 'not-a-uuid');
+        $middleware->handle($malformed, static fn (): Response => new Response('ok'));
+
+        $this->assertSame('0192f3c4-7a1b-4c2d-9e3f-0123456789ab', $client->transactions[0]['trace_id']);
+        $this->assertNotSame($client->transactions[0]['id'], $client->transactions[0]['trace_id']);
+        $this->assertArrayNotHasKey('trace_id', $client->transactions[1]);
+    }
 }
