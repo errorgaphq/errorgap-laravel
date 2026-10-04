@@ -51,8 +51,9 @@ final class ApmMiddleware
             throw $exception;
         } finally {
             $durationMs = (hrtime(true) - $startedAt) / 1_000_000;
-            $this->client->notifyTransaction([
+            $this->client->notifyTransaction(array_filter([
                 'id' => $transactionId,
+                'trace_id' => $this->browserTraceId($request),
                 'kind' => 'web',
                 'method' => $request->getMethod(),
                 'path' => $this->routePattern($request),
@@ -60,8 +61,20 @@ final class ApmMiddleware
                 'status_code' => $statusCode,
                 'duration_ms' => round($durationMs, 3),
                 'spans' => $this->spans->flush(),
-            ]);
+            ], static fn ($value): bool => $value !== null));
         }
+    }
+
+    /**
+     * The x-errorgap-trace header a browser SDK sent with this call, linking
+     * the browser's view of it to this transaction. Only a well-formed UUID.
+     */
+    private function browserTraceId(Request $request): ?string
+    {
+        $value = strtolower(trim((string)$request->headers->get('x-errorgap-trace', '')));
+        return preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/', $value) === 1
+            ? $value
+            : null;
     }
 
     private function routePattern(Request $request): string

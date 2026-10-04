@@ -38,6 +38,8 @@ When `ERRORGAP_APM_ENABLED=true`, the SDK automatically records:
 - HTTP response time, status, method, and normalized Laravel route
 - database query spans with normalized SQL and application call sites
 - queued job duration, queue name, and success or failure outcome
+- the `x-errorgap-trace` header sent by `@errorgap/browser` 0.3+, so errorgap
+  links each browser API call to the server request that answered it
 
 `ERRORGAP_APM_SAMPLE_RATE` accepts a value from `0` to `1` and applies only to
 performance transactions; errors are still reported independently. APM is
