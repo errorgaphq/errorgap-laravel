@@ -23,6 +23,21 @@ return [
     'capture_exceptions' => true,
     'capture_jobs' => true,
 
-    // Include the authenticated user's identifier in error context.
+    // Include the authenticated user's id and email with errors, so they can
+    // be filtered by user in Errorgap.
     'include_user' => env('ERRORGAP_INCLUDE_USER', false),
+
+    // The deployed version or commit. Unset, it is read from ERRORGAP_RELEASE,
+    // the hosting platform's commit variable, a REVISION file or the git
+    // checkout.
+    'release' => env('ERRORGAP_RELEASE'),
+
+    // Environments in which nothing is sent, e.g. ['local', 'testing'].
+    // Defaults to ERRORGAP_IGNORE_ENVIRONMENTS (comma-separated).
+    'ignore_environments' => null,
+
+    // Sees each notice (an array) before it is sent: return it, changed or
+    // not, or false to drop it. An invokable class name or [Class, 'method']
+    // (not a closure, so the config stays cacheable).
+    'before_notify' => null,
 ];

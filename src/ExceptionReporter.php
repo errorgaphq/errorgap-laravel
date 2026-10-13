@@ -33,12 +33,14 @@ final class ExceptionReporter
         ];
         $environment = [];
         $params = [];
+        $session = [];
 
         if ($includeRequest && $this->app->bound('request')) {
             $request = $this->app->make('request');
             if ($request instanceof Request) {
                 [$requestContext, $environment, $params] = $this->requestData($request);
                 $context = array_merge($context, $requestContext);
+                $session = $this->userSession($request);
             }
         }
 
@@ -46,9 +48,43 @@ final class ExceptionReporter
             $exception,
             context: array_merge($context, $extraContext),
             environment: $environment,
+            session: $session,
             params: $params,
             sync: true,
         );
+    }
+
+    /**
+     * The signed-in user as `session.user_id` / `session.user_email`, which
+     * Errorgap's user filters read. Only with `include_user`.
+     *
+     * @return array<string, string>
+     */
+    private function userSession(Request $request): array
+    {
+        if (!(bool)$this->app->make('config')->get('errorgap.include_user', false)) {
+            return [];
+        }
+        try {
+            $user = $request->user();
+        } catch (Throwable) {
+            return [];
+        }
+        if (!is_object($user)) {
+            return [];
+        }
+        $session = [];
+        if (method_exists($user, 'getAuthIdentifier')) {
+            $id = $user->getAuthIdentifier();
+            if (is_scalar($id) && (string)$id !== '') {
+                $session['user_id'] = (string)$id;
+            }
+        }
+        $email = $user->email ?? null;
+        if (is_string($email) && $email !== '') {
+            $session['user_email'] = $email;
+        }
+        return $session;
     }
 
     /**
