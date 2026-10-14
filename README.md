@@ -31,6 +31,19 @@ ERRORGAP_APM_SAMPLE_RATE=1
 `config/errorgap.php` reads them via `env()` calls. Disable individual
 capture sources with `capture_exceptions` or `capture_jobs`.
 
+## Fatal errors, releases and hooks
+
+With `errorgap/errorgap` 0.7 the integration also reports PHP fatal errors
+(out of memory, time limit), stops sending for the server's `Retry-After`
+after a 429, and masks `filter_keys` at any depth. In `config/errorgap.php`:
+
+```php
+'release' => env('ERRORGAP_RELEASE'),          // detected when unset
+'ignore_environments' => ['local', 'testing'],
+'include_user' => true,                        // session.user_id / user_email
+'before_notify' => App\Support\ErrorgapFilter::class, // invokable; return false to drop
+```
+
 ## APM
 
 When `ERRORGAP_APM_ENABLED=true`, the SDK automatically records:

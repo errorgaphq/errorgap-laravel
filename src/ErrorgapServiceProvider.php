@@ -42,6 +42,16 @@ final class ErrorgapServiceProvider extends ServiceProvider
             if (is_array($cfg['filter_keys'] ?? null)) {
                 $options['filterKeys'] = array_values($cfg['filter_keys']);
             }
+            if (is_string($cfg['release'] ?? null) && $cfg['release'] !== '') {
+                $options['release'] = $cfg['release'];
+            }
+            if (is_array($cfg['ignore_environments'] ?? null)) {
+                $options['ignoreEnvironments'] = array_values($cfg['ignore_environments']);
+            }
+            $hook = self::resolveHook($app, $cfg['before_notify'] ?? null);
+            if ($hook !== null) {
+                $options['beforeNotify'] = $hook;
+            }
 
             return new Configuration(array_filter($options, static fn ($v) => $v !== null));
         });
@@ -66,6 +76,21 @@ final class ErrorgapServiceProvider extends ServiceProvider
                 $app->make(QuerySpanCollector::class),
             );
         });
+    }
+
+    /**
+     * `before_notify` as a callable: an invokable class name or a
+     * [class, method] pair, resolved through the container.
+     */
+    private static function resolveHook(Container $app, mixed $hook): ?callable
+    {
+        if (is_string($hook) && $hook !== '' && class_exists($hook)) {
+            return static fn (array $notice) => $app->make($hook)($notice);
+        }
+        if (is_array($hook) && count($hook) === 2 && is_string($hook[0]) && is_string($hook[1]) && class_exists($hook[0])) {
+            return static fn (array $notice) => $app->make($hook[0])->{$hook[1]}($notice);
+        }
+        return is_callable($hook) ? $hook : null;
     }
 
     public function boot(): void
